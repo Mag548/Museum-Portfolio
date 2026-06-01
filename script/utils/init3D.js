@@ -1,49 +1,43 @@
-// THREEJS
 import * as THREE from "../three/build/three.module.js";
-window.THREE = THREE; // Allow three.js to be accessible everywhere
+window.THREE = THREE;
 import { OrbitControls } from "../three/examples/jsm/controls/OrbitControls.js";
-// HOMEMADE
 import Loader from "./loader.js";
 
 const canvas = document.querySelector(".render-container > canvas");
 const loadingOverlay = document.querySelector(".loader");
 
-export default () => { // create every element necessary for threeJS (scene, camera, renderer, orbits controls) and load elements
+export default () => {
     window.scene = new THREE.Scene();
-    window.camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight);
+    window.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 120);
     window.renderer = new THREE.WebGLRenderer({
         canvas,
-        antialias: true
+        antialias: true,
+        powerPreference: "high-performance",
     });
+
     renderer.physicallyCorrectLights = true;
     renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.toneMapping = THREE.CineonToneMapping;
-    renderer.toneMappingExposure = 2.1;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.55;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     new Loader(loadingOverlay).load();
 
-    const controls = new OrbitControls(camera, canvas);
+    const orbitControls = new OrbitControls(camera, canvas);
+    orbitControls.enablePan = false;
+    orbitControls.enableDamping = true;
+    orbitControls.dampingFactor = 0.06;
+    orbitControls.rotateSpeed = 0.35;
+    orbitControls.enableZoom = true;
+    orbitControls.zoomSpeed = 0.85;
+    orbitControls.enabled = true;
 
-    controls.enablePan = false; // block camera displacment
-    // rotation limits
-    controls.target.set(0, 1.2, 0);
-    controls.minAzimuthAngle = 0.3;
-    controls.maxAzimuthAngle = 1; // horizontal
-    controls.minPolarAngle = 0.5; // vertical
-    controls.maxPolarAngle = 1.2;
-    controls.rotateSpeed = 0.4;
-    // zoom limit
-    controls.minDistance = 6;
-    controls.maxDistance = 10;
-    // set camera
-    camera.position.set(8,6,8);
-    controls.update();
+    orbitControls.target.set(0, 4, 24);
+    camera.position.set(0, 3.5, 32);
+    orbitControls.update();
 
-    // select themes for html elements depending of day
-    const hours = new Date().getHours();
-    if (hours > 19 || hours < 7) setColors("night");
-    // return controls to edit them if necessary
-    return controls;
-}
+    window.controls = orbitControls;
+    return orbitControls;
+};

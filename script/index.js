@@ -1,66 +1,86 @@
-import "./utils/utilities.js"; // add general function like toRadian
+import "./utils/utilities.js";
 import init3D from "./utils/init3D.js";
-import { Caroussel, Form } from "./dom.js";
+import { MuseumPanel, initPanelClose, initExhibitFlow, openContactLink, beginExhibitFocus } from "./dom.js";
+import { EXHIBITS, exhibitPosition } from "./museum/constants.js";
 
 window.colors = {
-    day: {
+    museum: {
         environment: {
-            light: [0xFCE8B0, 1],
-            sun: [0xFDEEC4, 2],
-            fog: 0xe8e7e1
+            ambient: [0xfff8f0, 0.75],
+            fog: 0xf5f0e6,
         },
         css: {
-            green: "176, 215, 181",
-            beige: "223, 219, 212",
-            text: "30, 30, 30",
-            white: "232, 231, 225",
-        }
-    },
-    night: {
-        environment: {
-            light: [0x6D72C3, 0.2],
-            sun: [0x94C5CC, 0.1],
-            fog: 0x5b6378
+            black: "28, 24, 20",
+            navy: "61, 40, 23",
+            graphite: "42, 38, 34",
+            white: "255, 254, 248",
+            blue: "184, 134, 11",
+            blueBright: "201, 162, 39",
+            cream: "245, 240, 230",
+            wood: "92, 64, 51",
+            marble: "42, 38, 34",
         },
-        css: {
-            green: "36, 76, 64",
-            beige: "73, 71, 97",
-            text: "239, 241, 237",
-            white: "91, 99, 120",
-        }
     },
 };
 
-let activeModal = ""; // oppened modal
+window.activePanel = "";
+const museumPanel = new MuseumPanel();
+window.museumPanel = museumPanel;
 
-window.caroussel = new Caroussel();
-window.contactForm = new Form();
+window.openContactLink = openContactLink;
 
-/* -------------------------------------------------------------------------- */
-/*                        DOM INTERACTION FROM 3D SCENE                       */
-/* -------------------------------------------------------------------------- */
-window.openModal = targetId => { // open modal
-    if (activeModal) closeModal();
+window.openPanel = (id, options = {}) => {
     document.body.style.cursor = "initial";
-    activeModal = document.getElementById(targetId);
-    activeModal.className = "modal modal-active";
-    cancelAnimationFrame(world.frameRequest); // stop updating render to save perf
-    activeModal.addEventListener("mousedown", modalClick);
-    if (targetId == "projects") caroussel.oppen(); // play video caroussel video
-}
+    activePanel = id;
+    museumPanel.open(id, options);
+};
 
-window.closeModal = () => { // close modal opened
-    if (activeModal == "") return;
-    document.removeEventListener("click", modalClick);
-    activeModal.className = "modal";
-    activeModal = "";
-    world.update();
-    caroussel.close();
-}
+window.closePanel = () => {
+    if (!activePanel && !museumPanel.activeId) return;
+    museumPanel.close();
+    activePanel = "";
+    document.getElementById("read-more-prompt")?.classList.remove("prompt-visible");
+    if (world?.cameraController) {
+        world.cameraController.returnToOverview();
+    }
+};
 
-function modalClick(e) { // listener function for click -- check if click is not inside modal content close it
-    if (window.activeModal == "") return; // if no modal oppened
-    if (activeModal != e.target && e.target.parentNode.className != "close-modal") return; // if click outside of content or in the close btn continue -- close btn has an element inside so the click register on it -> go back to parent
-    closeModal();
-}
-export const controls = init3D(); // create 3D world and export controls to be used in resize.js
+initPanelClose();
+initExhibitFlow();
+
+window.openModal = (targetId) => {
+    const modal = document.getElementById(targetId);
+    if (!modal) return;
+    modal.classList.add("modal-active");
+};
+
+window.closeModal = () => {
+    const modal = document.getElementById("mobile-alert");
+    if (modal) modal.classList.remove("modal-active");
+};
+
+export const controls = init3D();
+
+setColors("museum");
+
+document.querySelectorAll(".exhibit-nav button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+        const id = btn.dataset.exhibit;
+        const exhibit = EXHIBITS.find((e) => e.id === id);
+        if (!exhibit || !world?.cameraController) return;
+        if (activePanel) closePanel();
+        const pos = exhibitPosition(exhibit.angle);
+        beginExhibitFocus(id, pos);
+    });
+});
+
+document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const prompt = document.getElementById("read-more-prompt");
+    if (prompt?.classList.contains("prompt-visible")) {
+        prompt.classList.remove("prompt-visible");
+        world?.cameraController?.returnToOverview();
+        return;
+    }
+    if (activePanel) closePanel();
+});

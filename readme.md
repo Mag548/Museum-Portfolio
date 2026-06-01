@@ -1,18 +1,45 @@
-# 3D Room Portfolio using Three.js
-This is my personal and **actual** portfolio made with Three.js and Blender.
+# Manan's Museum
 
-The concept is to allow user to interact with most of the elements by clicking or hovering.
-## Librairies :
-- Three.js (obviously)
-- Thee.interactive
+An interactive 3D portfolio built with Three.js. Explore a British Museum–inspired hall with five glass-cased exhibits, cinematic camera transitions, and a hidden **Future Vision** room.
 
-## Usage :
-This repository include every necessary files, so you just have to clone.
+All 3D content is built **procedurally in the browser** — no external model files or export step required.
 
-**[WARNING]** Three.js wants us to use HTML `importmap` to work without embeded server (eg. vite). This is curently **not well suported**
+## Run locally
 
-**/!\ LIBRAIRIES FILE HAVE BEEN MODIFIED SO THE IMPORT WORK WITHOUT IMPORTMAP /!\\**
+```bash
+cd 3D-room-portofolio
+python3 -m http.server 8080
+```
 
-=> you **MUST** use the given librairies **OR** manually edit all import used (check that all import used are in absolute path and don't forget to also edit imported file)
+Open **http://localhost:8080**
 
-## website: [maxime-morel.xyz](https://maxime-morel.xyz)
+Compile SCSS after style changes:
+
+```bash
+npx sass stylesheets/style.scss stylesheets/style.css
+```
+
+## Exhibits
+
+| Exhibit | 3D Content |
+|---|---|
+| **About Me** | Rotating holographic statue, orbiting keywords |
+| **Experience** | Interconnected metallic rings — click a ring for details |
+| **Projects & Accolades** | Trophy case, miniature laptop, project showcases |
+| **Hobbies** | Badminton racket, camera, VR headset, laptop, car model |
+| **Contact** | Holographic LinkedIn, GitHub, Email, and Resume buttons |
+| **Future Vision** *(secret)* | Glowing briefcase — triple-click the **M** centerpiece |
+
+## Controls
+
+- **Click exhibit** — zoom camera + open panel
+- **Click sub-items** — rings, trophies, hobbies, contact discs
+- **Nav buttons** — jump to any exhibit
+- **Esc** — close panel and return to overview
+- **Triple-click M** — Future Vision secret room
+
+## Customization
+
+Edit `script/museum/content.js` for panel text, plaques, timeline, projects, and contact links.
+
+Place your resume at `assets/resume.pdf` for the 3D Resume button.

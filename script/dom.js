@@ -1,136 +1,315 @@
-const formElems = document.querySelectorAll("#contact-form input, #contact-form textarea");
-const slides = document.querySelectorAll(".caroussel-content > *");
-const autoDefil = document.querySelector(".caroussel .auto");
-const carousselContainer = document.querySelector(".caroussel");
-let progress = document.querySelector(".caroussel .progress");
+import { EXHIBIT_CONTENT } from "./museum/content.js";
 
-export class Form {
+const panel = document.getElementById("exhibit-panel");
+const panelTitle = document.getElementById("panel-title");
+const panelBody = document.getElementById("panel-body");
+const readMorePrompt = document.getElementById("read-more-prompt");
+const panelToggle = document.getElementById("panel-toggle");
+
+let pendingExhibitId = null;
+let pendingExhibitPos = null;
+let pendingExhibitOptions = null;
+
+export class MuseumPanel {
     constructor() {
-        this.inputs = [];
-        this.mailRule = /^[a-z][-._a-z0-9]*@[a-z0-9][-.a-z0-9]+\.[a-z]{2,}$/i; // mail must: start with letter after wich can be every letter number and -._ then @ and then domain with about same rule as mail name start with letter or number; no underscore then must avec . followed by extension (only letter with 2 or more character)
-        this.basicRules = /^.{1,60}$/; // firstName, lastName, adress and city can more or less be anything depending on the country
-        this.messageRule = /^.{10,500}$/; // message can also be anything only rule is preventing too short or long messages
+        this.activeId = null;
+        this.depth = "out";
+    }
 
-        formElems.forEach(elem => { // go through All form input
-            elem["originalPlaceholder"] = elem.getAttribute("placeholder"); // keep original placeholder to put it back if success
-            const err = elem.getAttribute("data-err"); // get and store errore message
-            let regex = this.basicRules; // regex wanted for specific input
-            switch (elem.name) { // if input is recognized change the regex to one specific to it
-                case "e-mail":
-                    regex = this.mailRule;
-                    break;
-                case "message":
-                    regex = this.messageRule;
-                    break;
-            }
-            this.inputs.push({ // store infos
-                elem,
-                regex,
-                err
+    open(id, options = {}) {
+        const content = EXHIBIT_CONTENT[id];
+        if (!content || !panel) return;
+
+        this.activeId = id;
+        panelTitle.textContent = content.title;
+        panelBody.innerHTML = this.renderContent(id, content);
+        panel.classList.add("panel-active");
+        panel.setAttribute("aria-hidden", "false");
+        this.setDepth("in");
+        this.bindInteractions(id);
+
+        if (options.ringId) this.expandExperienceRing(options.ringId);
+        if (options.projectId) this.selectProject(options.projectId);
+        if (options.hobbyId) {
+            this.selectHobby(options.hobbyId);
+            window.world?.exhibits?.animateHobby(options.hobbyId);
+        }
+    }
+
+    setDepth(depth) {
+        this.depth = depth;
+        if (!panel) return;
+        panel.classList.toggle("panel-expanded", depth === "in");
+        panel.classList.toggle("panel-collapsed", depth === "out");
+        panelToggle?.classList.toggle("is-in", depth === "in");
+        panelToggle?.classList.toggle("is-out", depth === "out");
+    }
+
+    toggleDepth() {
+        if (this.depth === "in") {
+            this.setDepth("out");
+            window.world?.zoomExhibitOut?.();
+        } else {
+            this.setDepth("in");
+            window.world?.zoomExhibitIn?.();
+        }
+    }
+
+    openExperienceRing(ringId) {
+        this.open("experience", { ringId });
+    }
+
+    expandExperienceRing(ringId) {
+        requestAnimationFrame(() => {
+            const card = panelBody.querySelector(`.timeline-card[data-id="${ringId}"]`);
+            if (!card) return;
+            const btn = card.querySelector(".timeline-header");
+            const body = card.querySelector(".timeline-body");
+            card.classList.add("expanded");
+            btn?.setAttribute("aria-expanded", "true");
+            if (body) body.style.maxHeight = `${body.scrollHeight}px`;
+            card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+    }
+
+    selectProject(projectId) {
+        requestAnimationFrame(() => {
+            const card = panelBody.querySelector(`.project-card[data-id="${projectId}"]`);
+            card?.classList.add("selected");
+            card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+    }
+
+    selectHobby(hobbyId) {
+        requestAnimationFrame(() => {
+            const card = panelBody.querySelector(`.hobby-card[data-hobby="${hobbyId}"]`);
+            card?.classList.add("selected");
+            card?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+    }
+
+    close() {
+        if (!panel) return;
+        panel.classList.remove("panel-active", "panel-expanded", "panel-collapsed");
+        panel.setAttribute("aria-hidden", "true");
+        this.activeId = null;
+        this.depth = "out";
+        panelToggle?.classList.remove("is-in", "is-out");
+    }
+
+    renderContent(id, content) {
+        switch (id) {
+            case "about":
+                return content.sections
+                    .map(
+                        (s) => `
+                    <div class="glass-card">
+                        <h3>${s.heading}</h3>
+                        <p>${s.body}</p>
+                    </div>`
+                    )
+                    .join("");
+
+            case "experience":
+                return `<p class="panel-hint">Click rings in the 3D sculpture or expand sections below.</p>
+                <div class="timeline">${content.timeline
+                    .map(
+                        (item) => `
+                    <div class="timeline-card" data-id="${item.id}">
+                        <button class="timeline-header" aria-expanded="false">
+                            <span>${item.title}</span>
+                            <span class="timeline-chevron">›</span>
+                        </button>
+                        <div class="timeline-body">
+                            ${this.renderEntries(item.entries)}
+                        </div>
+                    </div>`
+                    )
+                    .join("")}</div>`;
+
+            case "projects":
+                return `<div class="project-grid">${content.items
+                    .map(
+                        (item) => `
+                    <article class="glass-card project-card" data-id="${item.id}">
+                        <div class="project-thumb">${item.image ? `<img src="${item.image}" alt="" loading="lazy">` : "<div class='project-placeholder'></div>"}</div>
+                        <h3>${item.title}</h3>
+                        <p>${item.description}</p>
+                        ${item.link && item.link !== "#" ? `<a href="${item.link}" class="btn btn-glow" target="_blank" rel="noopener">Learn More</a>` : ""}
+                    </article>`
+                    )
+                    .join("")}</div>`;
+
+            case "hobbies":
+                return `<div class="hobby-grid">${content.items
+                    .map(
+                        (item) => `
+                    <button class="glass-card hobby-card" data-hobby="${item.id}">
+                        <span class="hobby-icon">${this.hobbyIcon(item.id)}</span>
+                        <h3>${item.label}</h3>
+                        <p class="hobby-desc">${item.description}</p>
+                    </button>`
+                    )
+                    .join("")}</div>`;
+
+            case "contact":
+                return `
+                    <p class="contact-note">${content.note}</p>
+                    <div class="contact-detail">
+                        <p><strong>Manan Goswami</strong></p>
+                        <p>Grade 12 · Abbey Park High School</p>
+                        <p>Oakville, Ontario</p>
+                    </div>
+                    <div class="contact-grid">
+                        ${content.links
+                            .map(
+                                (link) =>
+                                    link.url === "#"
+                                        ? `<span class="glass-card contact-link contact-static" data-id="${link.id}">
+                                <span class="contact-icon">${link.icon}</span>
+                                <span>${link.label}</span>
+                            </span>`
+                                        : `<a href="${link.url}" class="glass-card contact-link" target="_blank" rel="noopener" data-id="${link.id}">
+                                <span class="contact-icon">${link.icon}</span>
+                                <span>${link.label}</span>
+                            </a>`
+                            )
+                            .join("")}
+                    </div>`;
+
+            case "secret":
+                return content.sections
+                    .map(
+                        (s) => `
+                    <div class="glass-card secret-card">
+                        <h3>${s.heading}</h3>
+                        <p>${s.body}</p>
+                    </div>`
+                    )
+                    .join("");
+
+            default:
+                return "<p>Exhibit content unavailable.</p>";
+        }
+    }
+
+    hobbyIcon(id) {
+        const icons = {
+            badminton: "🏸",
+            camera: "📷",
+            vr: "🥽",
+            laptop: "💻",
+            car: "🏎",
+        };
+        return icons[id] || "✦";
+    }
+
+    renderEntries(entries = []) {
+        return entries
+            .map(
+                (entry) => `
+            <div class="timeline-entry">
+                <p class="entry-role"><strong>${entry.role}</strong>${entry.org ? ` — ${entry.org}` : ""}</p>
+                ${entry.dates ? `<p class="entry-dates">${entry.dates}</p>` : ""}
+                ${entry.details?.length ? `<ul class="entry-details">${entry.details.map((d) => `<li>${d}</li>`).join("")}</ul>` : ""}
+            </div>`
+            )
+            .join("");
+    }
+
+    bindInteractions(id) {
+        if (id === "experience") {
+            panelBody.querySelectorAll(".timeline-header").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const card = btn.closest(".timeline-card");
+                    const body = card.querySelector(".timeline-body");
+                    const isOpen = card.classList.toggle("expanded");
+                    btn.setAttribute("aria-expanded", isOpen);
+                    body.style.maxHeight = isOpen ? `${body.scrollHeight}px` : "0";
+                });
             });
-            elem.addEventListener("blur", () => this.check(regex, elem, err)) // listen for focus change on inputs
-        })
-    }
-
-    submitForm = () => { // check if all form is good before "submiting"
-        let error = false;
-        this.inputs.forEach(input => { // check all input
-            if (!this.check(input.regex, input.elem, input.err)) error = true;
-        })
-        if (error) { // if one or more error alert it
-            displayPopup("fail", ":/ At least one wrong entry");
-            return;
         }
-        displayPopup("success", "Success !");
-        // revert form back to its original state
-        this.inputs.forEach(({ elem:input }) => {
-            input.value = "";
-            input.className = "";
-        }); // clear input entries
-        closeModal(); // close the modal
-    }
 
-    check = (regEx, input, errorTxt) => { // check if one input is valid
-        if (regEx.test(input.value)) { // test regex
-            // succes
-            input.className = "success";
-            input.setAttribute("placeHolder", input.originalPlaceholder);
-            return true;
+        if (id === "hobbies") {
+            panelBody.querySelectorAll(".hobby-card").forEach((card) => {
+                card.addEventListener("click", () => {
+                    panelBody.querySelectorAll(".hobby-card").forEach((c) => c.classList.remove("selected"));
+                    card.classList.add("selected");
+                    window.world?.exhibits?.animateHobby(card.dataset.hobby);
+                });
+            });
         }
-        // fail
-        input.className = "fail";
-        input.value = "";
-        input.setAttribute("placeHolder", errorTxt);
-        return false;
+
+        if (id === "projects") {
+            panelBody.querySelectorAll(".project-card").forEach((card) => {
+                card.addEventListener("click", (e) => {
+                    if (e.target.closest("a")) return;
+                    panelBody.querySelectorAll(".project-card").forEach((c) => c.classList.remove("selected"));
+                    card.classList.add("selected");
+                });
+            });
+        }
     }
 }
 
-export class Caroussel {
-    constructor() {
-        this.container = carousselContainer; // to be abble to acces from resize.js
-        this.slides = slides; // to be abble to acces from index.js
-        slides.forEach((e, i) => { // add dot depending on slide number
-            const dot = document.createElement("div");
-            dot.className = "dot";
-            progress.appendChild(dot);
-            dot.addEventListener("click", () => this.goToSlide(i));
-        })
-        progress = progress.querySelectorAll("*");
-        progress[0].className = "dot active";
+function hideReadMorePrompt() {
+    readMorePrompt?.classList.remove("prompt-visible");
+    readMorePrompt?.setAttribute("aria-hidden", "true");
+    pendingExhibitId = null;
+    pendingExhibitPos = null;
+    pendingExhibitOptions = null;
+}
 
-        this.actualSlide = 0;
-        this.autoSlideInterval = false;
-    }
+function showReadMorePrompt(id, pos, options = {}) {
+    pendingExhibitId = id;
+    pendingExhibitPos = pos;
+    pendingExhibitOptions = options;
+    readMorePrompt?.classList.add("prompt-visible");
+    readMorePrompt?.setAttribute("aria-hidden", "false");
+}
 
-    changeSlide = (to) => {
-        if (!this.oppened) return; // don't change slide if caroussel closed
-        // hide last slide
-        slides[this.actualSlide].className = "hidden-slide";
-        slides[this.actualSlide].querySelector("video").pause();
-        // defines next slide to display
-        this.actualSlide += to;
-        if (this.actualSlide < 0) this.actualSlide = slides.length-1;
-        else if (this.actualSlide >= slides.length) this.actualSlide = 0;
-        // display wanted slide
-        slides[this.actualSlide].className = "active";
-        slides[this.actualSlide].querySelector("video").play();
-        // update dot progress
-        progress.forEach(dot => dot.className = "dot");
-        progress[this.actualSlide].className = "dot active";
-    }
+function confirmReadMore() {
+    const id = pendingExhibitId;
+    const options = pendingExhibitOptions || {};
+    hideReadMorePrompt();
+    if (!id || !window.world) return;
 
-    goToSlide = (to) => {
-        if (to >= slides.length || to < 0) return;
-        this.pause()
-        slides[this.actualSlide].className = "hidden-slide"; // hide last image
-        slides[this.actualSlide].querySelector("video").pause();
-        this.actualSlide = to;
-        this.changeSlide(0);
-    }
-    
-    play = () => {
-        if (this.autoSlideInterval) return pause();
-        this.autoSlideInterval = setInterval(() => {
-            if (document.querySelector(".caroussel .text:hover")) return;
-            this.changeSlide(1);
-        }, 6000);
-        autoDefil.setAttribute("data-state", "play"); // change datastate of play/pause container to update CSS
-    }
+    window.world.openExhibitDetail(id, options);
+}
 
-    pause = () => {
-        if (!this.autoSlideInterval) return;
-        clearInterval(this.autoSlideInterval);
-        this.autoSlideInterval = false;
-        autoDefil.setAttribute("data-state", "pause"); // change datastate of play/pause container to update CSS
-    }
+function dismissReadMore() {
+    hideReadMorePrompt();
+    window.world?.cameraController?.returnToOverview();
+}
 
-    oppen = () => { // handle everything necessary on oppening of caroussel modal
-        slides[this.actualSlide].querySelector("video").play();
-        this.oppened = true;
-    }
+export function initExhibitFlow() {
+    document.getElementById("read-more-yes")?.addEventListener("click", confirmReadMore);
+    document.getElementById("read-more-no")?.addEventListener("click", dismissReadMore);
 
-    close = () => {
-        this.slides[this.actualSlide].querySelector("video").pause(); // pause video to save perfs
-        this.oppened = false;
-    }
+    panelToggle?.addEventListener("click", () => {
+        window.museumPanel?.toggleDepth();
+    });
+}
+
+export function initPanelClose() {
+    document.querySelectorAll(".close-panel").forEach((btn) => {
+        btn.addEventListener("click", closePanel);
+    });
+}
+
+export function beginExhibitFocus(id, pos, options = {}) {
+    hideReadMorePrompt();
+    window.world?.cameraController?.focusExhibitFront(id, pos, () => {
+        if (options.skipPrompt) {
+            window.world.openExhibitDetail(id, options);
+            return;
+        }
+        showReadMorePrompt(id, pos, options);
+    });
+}
+
+export function openContactLink(contactId) {
+    const link = EXHIBIT_CONTENT.contact.links.find((l) => l.id === contactId);
+    if (link?.url && link.url !== "#") window.open(link.url, "_blank", "noopener");
+    else openPanel("contact");
 }

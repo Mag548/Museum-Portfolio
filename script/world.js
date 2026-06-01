@@ -1,155 +1,243 @@
-import { InteractionManager } from './three.interactive/build/three.interactive.js';
-import Environment from './utils/environment.js';
+import { InteractionManager } from "./three.interactive/build/three.interactive.js";
+import MuseumEnvironment from "./utils/environment.js";
 import Resizer from "./utils/resize.js";
+import MuseumBuilder from "./museum/museumBuilder.js";
+import Exhibits from "./museum/exhibits.js";
+import CameraController from "./museum/cameraController.js";
+import Particles from "./museum/particles.js";
+import { EXHIBITS, exhibitPosition } from "./museum/constants.js";
+import { beginExhibitFocus } from "./dom.js";
 
-const animations = {};
 const interactions = [];
 let interacted = false;
+let secretClickCount = 0;
+let secretClickTimer = null;
 
-export default class World { // World is everithing regarding 3D world after initialization (set the room, add some light updating etc)
-    constructor(assets) {
-        this.assets = assets;
-        this.fullRoom = assets.room;
-        this.room = assets.room.objects;
+export default class MuseumWorld {
+    constructor() {
+        this.interactionManager = new InteractionManager(renderer, camera, renderer.domElement);
+        this.environment = new MuseumEnvironment();
+        this.museum = new MuseumBuilder(scene);
+        this.exhibits = new Exhibits(this.museum, this.interactionManager);
+        this.particles = new Particles(scene);
+        this.cameraController = new CameraController(camera, window.controls);
 
-        this.interactionManager = new InteractionManager(renderer, camera, renderer.domElement); // handle click/hover etc event
-        this.environment = new Environment(); // light fog etc
-        this.mixer = new THREE.AnimationMixer(this.fullRoom.scene); // animations
-        this.setRoom();
-        this.updateClock();
-        this.timer = new THREE.Clock(); // create Three clock to get delta time
-        this.update();
-        setTimeout(() => { // add "hint" if user dosen't interact
-            if (!interacted) this.Animate("hint-anim", 0.1, "forward");
-        }, 8000)
+        this.setupSpotlights();
+        this.setupInteractions();
+        this.setupSubInteractions();
+        this.setupSecretTrigger();
+
+        this.timer = new THREE.Clock();
+        this.elapsed = 0;
+        this.frameRequest = null;
+        this.hoveredExhibit = null;
+
         new Resizer(renderer, camera);
+        this.update();
+
+        setTimeout(() => {
+            if (!interacted) this.hint();
+        }, 10000);
     }
 
-    setRoom = () => { // add room to scene + set up
-        scene.add(this.fullRoom.scene);
-        // add screen texture
-        this.room["screen-video"].material = new THREE.MeshStandardMaterial({
-            map: this.assets["screen-animation"],
-            emissive: 0x999999,
-            emissiveMap: this.assets["screen-animation"],
-            emissiveIntensity: 0.5,
+    setupSpotlights() {
+        EXHIBITS.forEach(({ id, angle }) => {
+            const pos = exhibitPosition(angle);
+            const light = new THREE.SpotLight(0xfff8f0, 3.5, 22, toRadian(40), 0.5, 1.4);
+            light.position.set(pos.x * 0.25 + Math.sin(angle) * 2, 9.5, pos.z * 0.25 - Math.cos(angle) * 2);
+            light.castShadow = true;
+            light.shadow.mapSize.set(512, 512);
+
+            const target = new THREE.Object3D();
+            target.position.set(pos.x, 2, pos.z);
+            scene.add(target);
+            light.target = target;
+
+            scene.add(light);
+            this.exhibits.spotlights[id] = light;
         });
-        // add lights
-        const deskLight = this.environment.addSpotLight(this.room["desk_lamp"].position, this.room.letter);
-        const bedLight = this.environment.addPointLight(this.room["lamp"].position);
-        // add Interactions
-        this.setInteractions("screen-video", "mousedown", () => openModal("projects"));
-        this.setInteractions("letter", "mousedown", () => openModal("contact"));
-        this.setInteractions("letter-box", "mousedown", () => openModal("contact"));
 
-        this.setInteractions("lamp", "click", () => this.environment.toggleLight(bedLight));
-        this.setInteractions("desk_lamp", "click", () => this.environment.toggleLight(deskLight));
+        const centerLight = new THREE.PointLight(0xfff4e0, 1.5, 22, 1.4);
+        centerLight.position.set(0, 8, 0);
+        scene.add(centerLight);
+    }
 
-        this.setInteractions("keyboard", "click", () => this.assets.typing.audio = playAudio(this.assets.typing));
-        this.setInteractions("Cube", "click", () => this.assets.oof.audio = playAudio(this.assets.oof));
-        this.setInteractions("radio", "click", () => this.assets.oof.audio = playAudio(this.assets.radio));
+    setupInteractions() {
+        EXHIBITS.forEach(({ id, angle }) => {
+            const pedestal = this.museum.pedestals[id];
+            const hitBox = pedestal?.hitBox;
+            if (!hitBox) return;
 
-        this.setInteractions("globe", "click", () => this.Animate("globe-anim", 2, "repeat"));
-        this.setInteractions("mouse", "click", () => this.Animate("mouse-anim", 2, "repeat"));
-        this.setInteractions("chair", "click", () => this.Animate("chair-anim", 2, "both-way"));
-        this.setInteractions("cofee-cup", "click", () => this.Animate("cofee-anim", 2, "both-way"));
-        this.setInteractions("drawer", "click", () => this.Animate("drawer-anim", 0.5, "both-way"));
-        this.setInteractions("book5", "click", () => this.Animate("book5-anim", 1, "both-way"));
-        this.setInteractions("paraglider", "click", () => this.Animate("paraglider-anim", 10, "reset-after"));
-        this.setInteractions("letter", "mouseover", () => this.Animate("letter-top-anim", 1, "forward"));
-        this.setInteractions("letter", "mouseout", () => this.Animate("letter-top-anim", 1, "backward"));
-        // add animations
-        this.Animate("letter-box-anim", 5, "infinite");
-        this.Animate("room-entry-anim", 5, "infinite");
+            this.interactionManager.add(hitBox);
+            const pos = exhibitPosition(angle);
+
+            hitBox.addEventListener("mouseover", () => {
+                document.body.style.cursor = "pointer";
+                this.hoveredExhibit = id;
+                this.exhibits.setHover(id, true);
+            });
+
+            hitBox.addEventListener("mouseout", () => {
+                if (activePanel === "") document.body.style.cursor = "initial";
+                this.hoveredExhibit = null;
+                this.exhibits.setHover(id, false);
+            });
+
+            hitBox.addEventListener("click", (e) => {
+                e.stopPropagation?.();
+                interacted = true;
+                this.startExhibitFocus(id, pos);
+            });
+
+            interactions.push({ id, mesh: hitBox });
+        });
+    }
+
+    startExhibitFocus(id, pos, options = {}) {
+        if (activePanel) closePanel();
+        beginExhibitFocus(id, pos, options);
+    }
+
+    openExhibitDetail(id, options = {}) {
+        const pedestal = this.museum.pedestals[id];
+        const exhibit = EXHIBITS.find((e) => e.id === id);
+        if (!pedestal || !exhibit) return;
+
+        const pos = exhibitPosition(exhibit.angle);
+        const frontShot = this.cameraController.computeFrontShot(pos);
+        this.cameraController.frontCam.position.copy(frontShot.position);
+        this.cameraController.frontCam.target.copy(frontShot.target);
+        this.cameraController.currentFocus = id;
+
+        this.cameraController.focusExhibitPlaque(id, pedestal, () => {
+            openPanel(id, options);
+        });
+    }
+
+    zoomExhibitIn() {
+        const id = this.cameraController.currentFocus;
+        const pedestal = id ? this.museum.pedestals[id] : null;
+        if (!id || !pedestal) return;
+        this.cameraController.focusExhibitPlaque(id, pedestal);
+    }
+
+    zoomExhibitOut() {
+        if (!this.cameraController.currentFocus) return;
+        this.cameraController.returnToExhibitFront();
+    }
+
+    focusExhibit(id, pos, options = {}) {
+        this.startExhibitFocus(id, pos, options);
+    }
+
+    setupSubInteractions() {
+        this.exhibits.subInteractives.forEach(({ mesh, type, exhibitId, ringId, projectId, hobbyId, contactId }) => {
+            mesh.addEventListener("mouseover", (e) => {
+                e.stopPropagation?.();
+                document.body.style.cursor = "pointer";
+            });
+            mesh.addEventListener("mouseout", () => {
+                if (activePanel === "") document.body.style.cursor = "initial";
+            });
+            mesh.addEventListener("click", (e) => {
+                e.stopPropagation?.();
+                interacted = true;
+                const angle = EXHIBITS.find((ex) => ex.id === exhibitId)?.angle;
+                if (angle === undefined) return;
+                const pos = exhibitPosition(angle);
+
+                switch (type) {
+                    case "ring":
+                        this.openExhibitDetail(exhibitId, { ringId });
+                        break;
+                    case "project":
+                        this.openExhibitDetail(exhibitId, { projectId });
+                        break;
+                    case "hobby":
+                        this.exhibits.animateHobby(hobbyId);
+                        this.openExhibitDetail(exhibitId, { hobbyId });
+                        break;
+                    case "contact":
+                        if (contactId === "email") {
+                            this.openExhibitDetail("contact");
+                        } else if (contactId === "resume") {
+                            window.openContactLink("resume");
+                        } else {
+                            window.openContactLink(contactId);
+                        }
+                        break;
+                }
+            });
+        });
+    }
+
+    setupSecretTrigger() {
+        const trigger = this.museum.secretTrigger;
+        if (!trigger) return;
+
+        this.interactionManager.add(trigger);
+
+        trigger.addEventListener("mouseover", () => {
+            document.body.style.cursor = "pointer";
+        });
+
+        trigger.addEventListener("mouseout", () => {
+            if (activePanel === "") document.body.style.cursor = "initial";
+        });
+
+        trigger.addEventListener("click", () => {
+            secretClickCount++;
+            clearTimeout(secretClickTimer);
+            secretClickTimer = setTimeout(() => {
+                secretClickCount = 0;
+            }, 1500);
+
+            if (secretClickCount >= 3) {
+                secretClickCount = 0;
+                this.revealSecret();
+            }
+        });
+    }
+
+    revealSecret() {
+        this.museum.secretRoom.visible = true;
+        this.cameraController.revealSecretRoom(() => {
+            openPanel("secret");
+        });
+    }
+
+    hint = () => {
+        interactions.forEach(({ mesh }) => {
+            mesh.parent?.traverse((node) => {
+                if (node.material?.emissive) {
+                    node.userData.originalEmissive = node.material.emissiveIntensity;
+                    node.material.emissiveIntensity = (node.material.emissiveIntensity || 0) + 0.25;
+                }
+            });
+        });
+
+        setTimeout(() => {
+            interactions.forEach(({ mesh }) => {
+                mesh.parent?.traverse((node) => {
+                    if (node.material?.emissive && node.userData.originalEmissive !== undefined) {
+                        node.material.emissiveIntensity = node.userData.originalEmissive;
+                    }
+                });
+            });
+        }, 2500);
     };
 
-    setInteractions = (target, type, action) => { // create interaction for elements
-        if (!this.interactionManager.interactiveObjects.find(interaction => interaction.name == target)) { // if object is not arleady animated add all prior need (add to interaction manager, add hover cursor, add to interaction hint)
-            this.interactionManager.add(this.room[target]);
-            // hover cursor change
-            this.room[target].addEventListener("mouseover", () => document.body.style.cursor = "pointer");
-            this.room[target].addEventListener("mouseout", () => document.body.style.cursor = "initial");
-            // add element to interaction list for color change hint
-            this.room[target].traverse((node) => {
-                interactions.push({
-                    name: target,
-                    object: node,
-                    originalMaterial: node.material
-                })
-            })
-        }
-        // listen for wanted interaction
-        this.room[target].addEventListener(type, () => {
-            action();
-            interacted = true;
-        });
-    }
+    update = () => {
+        const delta = this.timer.getDelta();
+        this.elapsed += delta;
 
-    hint = () => { // change color of every interactible elements for 2s then revert back to original
-        const hintMaterial = new THREE.MeshStandardMaterial({
-            color: 0xFF0000
-        });
+        this.interactionManager.update();
+        this.cameraController.update(delta);
+        this.museum.update(this.elapsed);
+        this.exhibits.update(this.elapsed);
+        this.particles.update(this.elapsed);
 
-        interactions.forEach(interaction => interaction.object.material = hintMaterial);
-        setTimeout(() => {
-            interactions.forEach(interaction => interaction.object.material = interaction.originalMaterial);
-        }, 2000);
-    }
-
-    Animate = (animation, speed, mode) => { // manage all animation
-        // animation mode: "forward" "backward" "infinite" "both-way" "reset-after" "repeat" (repeat = default so anything unrecognized will repeat)
-        if (!animations[animation]) { // if animation not initialized create it
-            const clip = this.fullRoom.animations.find(element => element.name === animation);
-            animations[animation] = this.mixer.clipAction(clip);
-            if (mode == "backward") animations[animation].setDuration(-speed); // backward mode 
-            else animations[animation].setDuration(speed);
-            if (mode != "infinite") animations[animation].setLoop(THREE.LoopOnce); // infinite mode
-            animations[animation].clampWhenFinished = true;
-        } else { // if arleady exist
-            animations[animation].paused = false;
-            switch (mode) {
-                case "both-way": // revert animation
-                    animations[animation].timeScale = -animations[animation].timeScale;
-                    break;
-                case "forward": // reset the timing for if same animation is used forward and backward
-                    animations[animation].timeScale = Math.abs(animations[animation].timeScale);
-                    break;
-                case "backward":
-                    animations[animation].timeScale = -Math.abs(animations[animation].timeScale);
-                    break;
-                default:
-                    animations[animation].reset();
-            }
-        }
-        animations[animation].play();
-        if (mode == "reset-after") { // reset annimation 5sec after its end
-            setTimeout(() => {
-                animations[animation].reset();
-                animations[animation].paused = true;
-            }, speed*1000 + 5000);
-        }
-    }
-
-    updateClock = () => { // update the clock time to the user local time
-        const date = new Date();
-        const time = [ date.getHours(), date.getMinutes(), date.getSeconds() ];
-        const angle = {
-            h: (time[0] + time[1]/60) * 30, // 12 hours, 360° => 30° steps -- add minutes as 0.something hours to make angle right
-            m: time[1]*6, // 60 minutes, 360° => 6° steps
-        };
-        this.room["clock-h"].rotation.z = - toRadian(angle.h);
-        this.room["clock-m"].rotation.z = - toRadian(angle.m);
-        setTimeout(() => {
-            this.updateClock();
-        }, (60 - time[2])*1000);
-    }
-
-    frameRequest; // make accessible from class instance so possible to stop updating on modal oppening (for perf)
-    update = () => { // update rendering
-        const deltaTime = this.timer.getDelta();
-        this.interactionManager.update(); // update interactions
-        this.mixer.update(deltaTime); // update animation
-        renderer.render(scene, camera); // render new frame
+        renderer.render(scene, camera);
         this.frameRequest = requestAnimationFrame(this.update);
-    }
+    };
 }
