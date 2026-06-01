@@ -82,9 +82,13 @@ export default class CameraController {
 
     computeFrontShot(position) {
         const inward = this.inwardVector(position);
-        const target = new THREE.Vector3(position.x, 1.85, position.z);
-        const camPos = target.clone().add(inward.multiplyScalar(3.8));
-        camPos.y = 2.6;
+        // Shift target 1.1 units toward the viewer so it sits between
+        // the plaque-pedestal (~2.25 units out) and the glass case centre,
+        // framing both in the same shot.
+        const target = new THREE.Vector3(position.x, 1.6, position.z)
+            .addScaledVector(inward, 1.1);
+        const camPos = target.clone().addScaledVector(inward, 4.5);
+        camPos.y = 2.2;
         return { position: camPos, target };
     }
 
