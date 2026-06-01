@@ -475,7 +475,9 @@ export default class MuseumBuilder {
         cap.position.y = 0.975;
         pedestalGroup.add(cap);
 
-        plaque.position.set(0, 1.66, 0);
+        const capTopY = 1.0;
+        const plaqueH = plaque.userData.plaqueHeight || 1.2;
+        plaque.position.set(0, capTopY + plaqueH / 2, 0);
         plaque.rotation.x = -0.30;
         pedestalGroup.add(plaque);
 

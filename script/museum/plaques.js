@@ -4,7 +4,6 @@ function wrapText(ctx, text, maxWidth) {
     const words = text.split(" ");
     const lines = [];
     let line = "";
-
     words.forEach((word) => {
         const test = line ? `${line} ${word}` : word;
         if (ctx.measureText(test).width > maxWidth && line) {
@@ -18,9 +17,30 @@ function wrapText(ctx, text, maxWidth) {
     return lines;
 }
 
-export function createPlaqueTexture(title, lines) {
+function measureCanvasHeight(title, lines) {
+    const cw = 512;
+    const temp = document.createElement("canvas");
+    temp.width = cw;
+    temp.height = 10;
+    const ctx = temp.getContext("2d");
+    ctx.font = "400 22px Inter, sans-serif";
+    const maxWidth = cw - 80;
+
+    let totalWrapped = 0;
+    lines.forEach((line) => {
+        totalWrapped += wrapText(ctx, line, maxWidth).length;
+    });
+
+    const lineH = 34;
+    const paraGap = 8;
+    const bodyH = totalWrapped * lineH + Math.max(0, lines.length - 1) * paraGap;
+
+    return Math.max(260, 120 + bodyH + 50 + 36);
+}
+
+export function createPlaqueTexture(title, lines, canvasHeight) {
     const width = 512;
-    const height = 640;
+    const height = canvasHeight;
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -48,37 +68,41 @@ export function createPlaqueTexture(title, lines) {
     ctx.fillStyle = "rgba(92, 64, 51, 0.35)";
     ctx.fillRect(32, 32, width - 64, 68);
 
-    ctx.font = '600 32px Georgia, "Times New Roman", serif';
+    ctx.font = "700 28px Inter, sans-serif";
     ctx.fillStyle = "#f5f0e6";
     ctx.textAlign = "center";
-    ctx.fillText(title.toUpperCase(), width / 2, 76);
+    ctx.textBaseline = "middle";
+    ctx.fillText(title.toUpperCase(), width / 2, 66);
+    ctx.textBaseline = "alphabetic";
 
     ctx.strokeStyle = "rgba(201, 162, 39, 0.45)";
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(50, 108);
-    ctx.lineTo(width - 50, 108);
+    ctx.moveTo(50, 110);
+    ctx.lineTo(width - 50, 110);
     ctx.stroke();
 
-    ctx.font = '400 24px Inter, Georgia, serif';
+    ctx.font = "400 22px Inter, sans-serif";
     ctx.fillStyle = "#e8e0d4";
-    ctx.textAlign = "left";
+    ctx.textAlign = "center";
 
-    let y = 145;
-    const lineHeight = 32;
+    const lineH = 34;
+    const paraGap = 8;
     const maxWidth = width - 80;
+    let y = 148;
 
     lines.forEach((line) => {
         wrapText(ctx, line, maxWidth).forEach((textLine) => {
-            ctx.fillText(textLine, 40, y);
-            y += lineHeight;
+            ctx.fillText(textLine, width / 2, y);
+            y += lineH;
         });
-        y += 6;
+        y += paraGap;
     });
 
-    ctx.font = 'italic 17px Georgia, serif';
-    ctx.fillStyle = "rgba(201, 162, 39, 0.75)";
+    ctx.font = "italic 500 15px Inter, sans-serif";
+    ctx.fillStyle = "rgba(201, 162, 39, 0.80)";
     ctx.textAlign = "center";
-    ctx.fillText("Click to explore", width / 2, height - 34);
+    ctx.fillText("Click to explore →", width / 2, height - 28);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.encoding = THREE.sRGBEncoding;
@@ -89,11 +113,23 @@ export function createPlaqueMesh(id) {
     const content = EXHIBIT_CONTENT[id];
     if (!content?.plaque) return null;
 
+    const { title, lines } = content.plaque;
+    const canvasH = measureCanvasHeight(title, lines);
+    const canvasW = 512;
+
+    const w3d = 1.05;
+    const h3d = w3d * (canvasH / canvasW);
+    const faceW = w3d - 0.10;
+    const faceH = h3d - 0.10;
+    const hh = h3d / 2;
+    const hw = w3d / 2;
+
     const group = new THREE.Group();
     group.name = `plaque-${id}`;
+    group.userData.plaqueHeight = h3d;
 
     const backing = new THREE.Mesh(
-        new THREE.BoxGeometry(1.05, 1.35, 0.06),
+        new THREE.BoxGeometry(w3d, h3d, 0.06),
         new THREE.MeshStandardMaterial({
             color: 0x3d2817,
             metalness: 0.1,
@@ -102,9 +138,9 @@ export function createPlaqueMesh(id) {
     );
     group.add(backing);
 
-    const texture = createPlaqueTexture(content.plaque.title, content.plaque.lines);
+    const texture = createPlaqueTexture(title, lines, canvasH);
     const face = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.95, 1.25),
+        new THREE.PlaneGeometry(faceW, faceH),
         new THREE.MeshStandardMaterial({
             map: texture,
             roughness: 0.85,
@@ -120,12 +156,12 @@ export function createPlaqueMesh(id) {
     });
 
     [
-        [0, 0.66, 0.04, 1.0, 0.04, 0.02],
-        [0, -0.66, 0.04, 1.0, 0.04, 0.02],
-        [-0.51, 0, 0.04, 0.04, 1.28, 0.02],
-        [0.51, 0, 0.04, 0.04, 1.28, 0.02],
-    ].forEach(([x, y, z, w, h, d]) => {
-        const edge = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
+        [0,   hh, 0.04, w3d + 0.04, 0.04, 0.02],
+        [0,  -hh, 0.04, w3d + 0.04, 0.04, 0.02],
+        [-hw,  0, 0.04, 0.04, h3d + 0.04, 0.02],
+        [ hw,  0, 0.04, 0.04, h3d + 0.04, 0.02],
+    ].forEach(([x, y, z, fw, fh, fd]) => {
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, fd), frameMat);
         edge.position.set(x, y, z);
         group.add(edge);
     });
