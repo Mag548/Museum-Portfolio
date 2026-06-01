@@ -50,6 +50,15 @@ export default class CameraController {
         this.camera.position.set(0, 3.5, 32);
         this.controls.target.set(0, 4, 24);
 
+        // Safety net: guarantee introComplete even if the user interacts
+        // with OrbitControls during the animation (which would cancel callbacks).
+        setTimeout(() => {
+            if (!this.introComplete) {
+                this.introComplete = true;
+                this.setFreeRoamLimits();
+            }
+        }, 6500);
+
         this.animateTo(
             { position: new THREE.Vector3(0, 3.2, 26), target: new THREE.Vector3(0, 5, 23.5) },
             2.5,
