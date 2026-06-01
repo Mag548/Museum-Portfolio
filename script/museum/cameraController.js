@@ -74,8 +74,8 @@ export default class CameraController {
     computeFrontShot(position) {
         const inward = this.inwardVector(position);
         const target = new THREE.Vector3(position.x, 1.85, position.z);
-        const camPos = target.clone().add(inward.multiplyScalar(2.35));
-        camPos.y = 2.05;
+        const camPos = target.clone().add(inward.multiplyScalar(3.8));
+        camPos.y = 2.6;
         return { position: camPos, target };
     }
 
@@ -86,12 +86,12 @@ export default class CameraController {
             plaque.getWorldPosition(target);
         } else {
             const pos = pedestal.group.position;
-            target.set(pos.x, 1.85, pos.z);
+            target.set(pos.x, 1.2, pos.z);
         }
 
         const inward = this.inwardVector(pedestal.group.position);
-        const camPos = target.clone().add(inward.multiplyScalar(0.72));
-        camPos.y = target.y + 0.02;
+        const camPos = target.clone().addScaledVector(inward, -1.5);
+        camPos.y = target.y + 0.48;
         return { position: camPos, target };
     }
 

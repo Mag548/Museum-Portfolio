@@ -421,23 +421,66 @@ export default class MuseumBuilder {
         labelMesh.position.set(0, 0.42 + caseH + 0.55, caseD / 2 + 0.06);
         group.add(labelMesh);
 
-        const plaque = createPlaqueMesh(id);
-        if (plaque) {
-            plaque.position.set(0, 0.42 + caseH * 0.42, caseD / 2 + 0.12);
-            plaque.rotation.x = -0.08;
-            caseGroup.add(plaque);
-        }
+        const plaque = this.createPlaquePedestal(group, id, caseD);
 
         const hitBox = new THREE.Mesh(
-            new THREE.BoxGeometry(caseW, caseH + 0.5, caseD),
+            new THREE.BoxGeometry(caseW, caseH + 0.5, caseD + 2.0),
             new THREE.MeshBasicMaterial({ visible: false })
         );
-        hitBox.position.y = 0.42 + caseH / 2;
+        hitBox.position.set(0, 0.42 + caseH / 2, 1.0);
         hitBox.name = `exhibit-hit-${id}`;
         hitBox.userData.exhibitId = id;
         group.add(hitBox);
 
         return { group, contentAnchor, hitBox, label: labelMesh, caseGroup, plaque: plaque || null };
+    }
+
+    createPlaquePedestal(group, id, caseD) {
+        const plaque = createPlaqueMesh(id);
+        if (!plaque) return null;
+
+        const pedestalGroup = new THREE.Group();
+        pedestalGroup.name = `plaque-pedestal-${id}`;
+        pedestalGroup.position.set(0, 0, caseD / 2 + 0.92);
+
+        const foot = new THREE.Mesh(
+            new THREE.BoxGeometry(0.80, 0.07, 0.48),
+            marbleMat(this.marbleMap)
+        );
+        foot.position.y = 0.035;
+        pedestalGroup.add(foot);
+
+        const step = new THREE.Mesh(
+            new THREE.BoxGeometry(0.64, 0.06, 0.37),
+            marbleMat(this.marbleMap)
+        );
+        step.position.y = 0.10;
+        pedestalGroup.add(step);
+
+        const column = new THREE.Mesh(
+            new THREE.BoxGeometry(0.47, 0.82, 0.27),
+            marbleMat(this.marbleMap)
+        );
+        column.position.y = 0.54;
+        pedestalGroup.add(column);
+
+        const cap = new THREE.Mesh(
+            new THREE.BoxGeometry(0.64, 0.05, 0.38),
+            new THREE.MeshStandardMaterial({
+                color: PALETTE.brass,
+                metalness: 0.88,
+                roughness: 0.22,
+            })
+        );
+        cap.position.y = 0.975;
+        pedestalGroup.add(cap);
+
+        plaque.position.set(0, 1.66, 0);
+        plaque.rotation.x = -0.30;
+        pedestalGroup.add(plaque);
+
+        group.add(pedestalGroup);
+        return plaque;
     }
 
     buildCenterpiece() {
