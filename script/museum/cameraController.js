@@ -90,7 +90,7 @@ export default class CameraController {
         }
 
         const inward = this.inwardVector(pedestal.group.position);
-        const camPos = target.clone().addScaledVector(inward, -1.5);
+        const camPos = target.clone().addScaledVector(inward, 1.4);
         camPos.y = target.y + 0.48;
         return { position: camPos, target };
     }
